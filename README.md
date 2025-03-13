@@ -1,117 +1,173 @@
-# Yield Curve Modeling, Multi-Curve Framework, and Greeks
+
+# Yield Curve Modeling: Multi-Curve and Greeks
 
 
+https://github.com/user-attachments/assets/5ae5ea7c-2d0c-4ca1-9898-f476f1118835
 
-https://github.com/user-attachments/assets/9df2f79d-77aa-4491-b00d-8443327f4e27
 
+This repository implements a yield curve generation model using interest rate swaps, Greek (delta) sensitivity analysis, and a multi-curve framework. The project uses numerical methods to calibrate the yield curve from market swap quotes and applies a bump-and-revalue approach to compute sensitivities. 
+
+Repository URL: [https://github.com/shubh123a3/Yield-Curve-Modeling_Multi_Curve_and_Greek/tree/master](https://github.com/shubh123a3/Yield-Curve-Modeling_Multi_Curve_and_Greek/tree/master)
+
+---
 
 ## Overview
-This repository focuses on yield curve modeling, multi-curve frameworks, and Greeks calculation using swaps. The project implements mathematical and computational models to estimate and analyze yield curves, their sensitivity to interest rate movements, and the impact on derivatives pricing.
 
-## Table of Contents
-- [Introduction](#introduction)
-- [Multi-Curve Framework](#multi-curve-framework)
-- [Yield Curve Sensitivities and Greeks](#yield-curve-sensitivities-and-greeks)
-- [Mathematical Formulation](#mathematical-formulation)
-- [Implementation](#implementation)
-- [Usage](#usage)
-- [References](#references)
+The project consists of three main parts:
+1. **Yield Curve Construction:** Calibrating a yield curve using swap instruments.
+2. **Greeks (Delta) Calculation:** Measuring the sensitivity of swap prices to small changes in market quotes.
+3. **Multi-Curve Framework:** Separating discounting and forecasting curves to improve pricing accuracy.
 
-## Introduction
-A **yield curve** represents the relationship between interest rates (or yields) and different maturities for bonds of similar credit quality. Traditional models use a **single-curve approach**, but post-2008 financial crisis, **multi-curve frameworks** have become essential due to discrepancies in discounting and forward rate curves.
+---
 
-### Why Multi-Curve Modeling?
-- In the past, a single yield curve was used for discounting and forecasting future cash flows.
-- Market disruptions led to the realization that different instruments require distinct yield curves.
-- Multi-curve models differentiate between **discounting curves** (OIS) and **forward curves** for forecasting floating rates.
+## 1. Yield Curve Construction
 
-## Multi-Curve Framework
-The multi-curve framework constructs separate curves for:
-1. **OIS Discount Curve ($D(t,T)$)**: Used for discounting future cash flows.
-2. **Forward Curve ($F(t,T)$)**: Used for pricing derivatives and forecasting forward rates.
+The yield curve is modeled by constructing a set of discount factors $P(0,T)$ based on continuously compounded yields. The discount factor is given by:
 
-The fundamental relationship between discount factors and forward rates is:
-\[
-F(t,T) = \frac{D(t,T)}{D(t,T+\delta)} - 1
-\]
+$$
+P(0,T) = e^{-r(T) \cdot T},
+$$
+
+where $r(T)$ is the continuously compounded yield at maturity $T$. Market swap quotes are used to solve for the unknown yields (or spine points) at selected maturities via a numerical calibration process (e.g., Newton-Raphson).
+
+### Newton-Raphson Calibration
+
+We solve for the yield vector $\mathbf{r} = [r(T_1), r(T_2), \dots, r(T_N)]$ by setting up a system of equations derived from swap prices (which should be zero at par):
+
+$$
+f_i(\mathbf{r}) = 0,\quad i=1,2,\dots,N.
+$$
+
+The iterative update is given by:
+
+$$
+\mathbf{r}^{(n+1)} = \mathbf{r}^{(n)} - J^{-1} \cdot \mathbf{f}(\mathbf{r}^{(n)}),
+$$
+
+with the Jacobian matrix elements approximated by:
+
+$$
+J_{ij} \approx \frac{f_i(r_j + \epsilon) - f_i(r_j)}{\epsilon}.
+$$
+
+---
+
+## 2. Swap Pricing
+
+For a payer swap, the price is computed as:
+
+$$
+V_{\text{swap}} = \left[P(0,T_i) - P(0,T_m)\right] - K \cdot \sum_{j=1}^{n} \tau_j \, P(0,T_j),
+$$
+
 where:
-- $D(t,T)$: Discount factor for time $T$
-- $F(t,T)$: Forward rate for period $(T, T+\delta)$
+- $T_i$ is the start date,
+- $T_m$ is the maturity,
+- $K$ is the fixed (strike) rate,
+- $\tau_j$ is the accrual period for each payment date,
+- $P(0,T_j)$ are the discount factors.
 
-### Curve Construction Methods
-- **Bootstrapping**: Constructing discount and forward curves iteratively from market instruments like swaps, bonds, and FRAs.
-- **Spline Interpolation**: Cubic splines or Nelson-Siegel models for smooth curve fitting.
-- **Optimization Techniques**: Minimizing error between market-observed rates and model-implied rates.
+At calibration, we adjust $\mathbf{r}$ such that the modeled swap prices match the market quotes (typically zero for par swaps).
 
-## Yield Curve Sensitivities and Greeks
-### Key Risk Measures:
-1. **Delta ($\Delta$)**: Sensitivity of instrument price to a small change in the yield curve.
-2. **Gamma ($\Gamma$)**: Second-order sensitivity measuring curvature effects.
-3. **Vega ($\nu$)**: Sensitivity to changes in interest rate volatility.
-4. **Theta ($\Theta$)**: Time decay impact on portfolio valuation.
+---
 
-Mathematically, the delta of a swap with respect to the yield curve is given by:
-\[
-\Delta = \frac{\partial V}{\partial r} = \sum_{i=1}^{n} \frac{\partial D(0,T_i)}{\partial r} C_i
-\]
-where:
-- $V$: Swap value
-- $r$: Interest rate
-- $C_i$: Cash flows at time $T_i$
+## 3. Greeks (Delta) Calculation
 
-### Yield Curve Shifts (Shock Analysis)
-Different shift methodologies include:
-- **Parallel Shift**: Uniform movement in the entire yield curve.
-- **Key Rate Shift**: Changes at specific maturities.
-- **Twist & Butterfly Movements**: Adjustments affecting different parts of the curve differently.
+To assess the sensitivity of swap prices to changes in market quotes, we use a finite difference method (bump-and-revalue). If $S(K)$ is the swap price computed with a market quote $K$, a small change $dK$ results in a new price $S(K + dK)$. The delta is approximated by:
 
-## Mathematical Formulation
-### Swap Pricing Formula
-A plain vanilla interest rate swap's present value (PV) is given by:
-\[
-PV = \sum_{i=1}^{n} C_i D(0,T_i) - \sum_{j=1}^{m} F_j D(0,T_j)
-\]
-where:
-- $C_i$: Fixed leg cash flows
-- $F_j$: Floating leg payments
-- $D(0,T_i)$: Discount factors
+$$
+\Delta \approx \frac{S(K + dK) - S(K)}{dK}.
+$$
 
-### Greeks Calculation
-- **Delta ($\Delta$)**:
-  \[
-  \Delta = \frac{\partial V}{\partial r}
-  \]
-- **Gamma ($\Gamma$)**:
-  \[
-  \Gamma = \frac{\partial^2 V}{\partial r^2}
-  \]
-- **Vega ($\nu$)**:
-  \[
-  \nu = \frac{\partial V}{\partial \sigma}
-  \]
+This computation is performed for each market quote, providing insight into how sensitive the swap is to changes in input rates.
+
+---
+
+## 4. Multi-Curve Framework
+
+### Motivation
+
+After the 2008 financial crisis, it became evident that a single yield curve was insufficient. Different curves are used for:
+- **Discounting Cash Flows:** Typically derived from OIS rates.
+- **Forecasting Forward Rates:** Based on LIBOR, EURIBOR, etc.
+
+### Mathematical Formulation
+
+#### Discount Curve
+The discount factor from the OIS curve is:
+
+$$
+P_{\text{discount}}(0,T) = e^{-r_{\text{discount}}(T) \cdot T}.
+$$
+
+#### Forward Curve
+The forward rate for a period $[T, T+\Delta]$ is derived as:
+
+$$
+F(0; T, T+\Delta) = \frac{1}{\Delta} \left( \frac{P_{\text{forward}}(0,T)}{P_{\text{forward}}(0,T+\Delta)} - 1 \right).
+$$
+
+#### Basis Spread
+The difference between the LIBOR and OIS forward rates is modeled by the basis spread $S(T)$:
+
+$$
+F_{\text{LIBOR}}(0; T, T+\Delta) = F_{\text{OIS}}(0; T, T+\Delta) + S(T).
+$$
+
+#### Swap Pricing in Multi-Curve Environment
+When pricing a swap using a multi-curve framework, the floating leg is projected using the forward curve and all cash flows are discounted using the discount curve:
+
+$$
+V_{\text{swap}} = \text{notional} \times \sum_{j=1}^{N} \tau_j \, P_{\text{discount}}(0, T_j) \left( F(0; T_{j-1}, T_j) - K \right).
+$$
+
+This approach ensures consistency with market practices by accurately reflecting funding costs and basis risks.
+
+---
 
 ## Implementation
-The project is implemented in Python using:
-- **Pandas & NumPy** for data manipulation
-- **SciPy Optimization** for curve fitting
-- **QuantLib** for financial modeling
 
-## Usage
-1. **Clone the repository**:
-   ```bash
+The project is implemented in Python using libraries such as NumPy, SciPy, Matplotlib, and Streamlit. Key functions include:
+
+- **`IRSwap` and `IRSwapMultiCurve`:** Compute swap prices under single-curve and multi-curve settings.
+- **`P0TModel` and `P0TModel_Greek`:** Compute discount factors.
+- **`YieldCurve` and `MultivariateNewtonRaphson`:** Calibrate the yield curve via the Newton-Raphson method.
+- **`BuildInstruments`:** Create swap instruments based on market quotes.
+- **Visualization:** Plot yield curves, swap prices, and sensitivity (delta) analysis.
+
+---
+
+## How to Run
+
+1. Clone the repository:
+   ```
    git clone https://github.com/shubh123a3/Yield-Curve-Modeling_Multi_Curve_and_Greek.git
    ```
-2. **Install dependencies**:
-   ```bash
+2. Install the dependencies:
+   ```
    pip install -r requirements.txt
    ```
-3. **Run the model**:
-   ```bash
-   python main.py
+3. Run the application (using Streamlit for interactive visualization):
+   ```
+   streamlit run app.py
    ```
 
-## References
-- John C. Hull, "Options, Futures, and Other Derivatives"
-- Brigo & Mercurio, "Interest Rate Models – Theory and Practice"
-- QuantLib Documentation
+Follow the on-screen instructions to explore yield curve building, Greeks computation, and multi-curve analysis.
+
+---
+
+## Conclusion
+
+This project implements a comprehensive yield curve modeling framework that includes:
+- Calibration using market swap quotes,
+- Greek (delta) sensitivity analysis through bump-and-revalue methods,
+- Multi-curve techniques for accurate discounting and forecasting.
+
+The use of LaTeX in the documentation clearly explains the theoretical and mathematical foundations behind each component, ensuring a deep understanding of modern interest rate modeling practices.
+
+---
+
+
+
+---
 
